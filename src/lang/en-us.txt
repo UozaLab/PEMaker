@@ -1,0 +1,41 @@
+﻿;
+; UTF-8(with BOM)
+;
+
+[StringsPE]
+PrevBtnText = Prev
+NextBtnText = Next
+ErrorBtnText = Error
+CancelBtnText = Cancel
+CancelingBtnText = Canceling
+CanceledBtnText = Canceled
+FinishBtnText = Finished
+StartBtnText = Make
+
+ClickNextToProceed = To continue, click Next.
+QuitOrProceed = You can close this program or click Next to perform additional actions.
+FinishISOFileCreation = Success to make the ISO file
+
+SelectFileToBuild = Select a Windows installer file (*.iso)
+Title_CheckISO = Checking files
+Title_Select_Arch = Select the CPU architecture
+Title_Select_System = Select the partitioning style and the system type
+Title_Make_ISO = Making ISO file...
+Title_Make_ISO_Done = Making ISO file...done
+Title_Complete = Completed!
+OpenIsoFile = Open an ISO file
+ISODesc1 = ISO file checking done
+ISODesc2 = You can make the following types of WinPE
+ISODesc_Arch = CPU architecture
+ISODesc_System = Partition style and system type
+Select32bit = 32bit
+Select64bit = 64bit
+SelectMbr = MBR (BIOS)
+SelectGpt = GPT (UEFI)
+ArchDesc1 = If you want to make a WindowsPE(x86) ISO, choose 32bit.
+ArchDesc2 = Otherwise, choose 64bit.
+MbrGptDesc1 = If you want to boot WindowsPE on BIOS, choose MBR(BIOS).
+MbrGptDesc2 = Otherwise, choose GPT(UEFI).
+CompleteItemOpen = Open file location
+CompleteItemBack = Back to first step
+CompleteItemQuit = Quit

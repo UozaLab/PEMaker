@@ -1,0 +1,270 @@
+/*
+ * Copyright (c) 2024-2026, UozaLab
+ *
+ * This program is free software: you can redistribute it and/or modify 
+ * it under the terms of the GNU General Public License as published by 
+ * the Free Software Foundation, either version 3 of the License, or 
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, 
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ *  See the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License 
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#include "CheckISOImage.h"
+#include "ISO.h"
+#include "WIM.h"
+#include "MiscWx.h"
+#include <wx/stdpaths.h>
+#include "tstring.h"
+#include <vector>
+#include <map>
+
+CheckISOImage::CheckISOImage(wxEvtHandler *event_handler, DataHolder* _data)
+     : CustomThread(event_handler), data(_data)
+{
+}
+
+bool find(const std::vector<wxString>& strings, wxString str)
+{
+    for(std::vector<wxString>::const_iterator itr = strings.begin(),
+        itr_end = strings.end(); itr != itr_end; itr++)
+    {
+        const wxString string = *itr;
+        if(string.Contains(str)) return true;
+    }
+    return false;
+}
+
+void* CheckISOImage::Entry()
+{
+    SetStateStart();
+    ISOExtractor* iso = nullptr;
+    std::vector<wxString> wim_image_names;
+    std::map<tstring, bool> file_exist_map;
+    WIM wim(this);
+
+    wxFileName ini_path = wxStandardPaths::Get().GetExecutablePath();
+    ini_path.SetFullName("pe_settings.ini");
+    CSimpleIniW ini;
+    ini.SetUnicode();
+    ini.SetQuotes();
+    ini.SetMultiLine();
+    ini.LoadFile(ini_path.GetFullPath().wc_str());
+
+PREP_STEP:
+    if(!WorkDir::RemoveWorkDir())
+    {
+        wxQueueEvent(event_handler, new ErrorEvent("Cannot remove work folder."));
+        goto END;
+    }
+    if(!WorkDir::PrepareWorkDir())
+    {
+        wxQueueEvent(event_handler, new ErrorEvent("Cannot create work folders."));
+        goto END;
+    }
+
+    {
+    const TCHAR* winpeshl_ini_value = ini.GetValue(_T("winpeshl.ini"), _T("key"));
+    if(winpeshl_ini_value != nullptr)
+    {
+        wxFileName tmp_path = WorkDir::GetWorkDir();
+        tmp_path.AppendDir("tmp");
+        tmp_path.SetFullName("winpeshl.ini");
+        wxFile ini_file(tmp_path.GetFullPath(), wxFile::write);
+        if(ini_file.IsOpened())
+        {
+            ini_file.Write(winpeshl_ini_value);
+        }
+    }
+    }
+
+FIRST_STEP:
+    {
+    iso = ISO::CreateExtractor(this, data->FilePath.IsoFilePath);
+    if(iso == nullptr)
+    {
+        wxQueueEvent(event_handler, new ErrorEvent("Failed to open iso file"));
+        goto END;
+    }
+
+    wxQueueEvent(event_handler, new MsgEvent("Start checking files"));
+    if(!iso->FileExists("/sources/boot.wim"))
+    {
+        wxQueueEvent(event_handler, new MsgEvent("Warning : Cannot find /sources/boot.wim"));
+        goto SIXTH_STEP;
+    }
+
+    }
+
+SECOND_STEP:
+    {
+    wxFileName bootwim_path = WorkDir::GetWorkDir();
+    bootwim_path.AppendDir("tmp");
+    bootwim_path.SetName("boot");
+    bootwim_path.SetExt("wim");
+
+    wxFileName export_target_path = WorkDir::GetWorkDir();
+    export_target_path.AppendDir("media");
+    export_target_path.AppendDir("sources");
+    export_target_path.SetName("boot");
+    export_target_path.SetExt("wim");
+
+    {
+    wxQueueEvent(event_handler, new MsgEvent("Trying to extract /sources/boot.wim"));
+    iso->EnableReportProgressFile(true);
+    ISOJobStatus result = iso->ExtractFile("/sources/boot.wim", bootwim_path.GetFullPath());
+    if(result != ISOJobStatus::SUCCESS)
+    {
+        wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Warning : Failed to extract /sources/boot.wim (%d)", result)));
+        goto SIXTH_STEP;
+    }
+    wxQueueEvent(event_handler, new ProgressEvent(100.));
+    }
+
+THIRD_STEP:
+    {
+    std::vector<wxString> infos;
+    WIMJobStatus result = wim.GetNameInformations(bootwim_path.GetFullPath(), infos);
+    if(result != WIMJobStatus::SUCCESS)
+    {
+        wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to get boot.wim information(%d)", result)));
+        goto FOURTH_STEP;
+    }
+
+    wxQueueEvent(event_handler, new MsgEvent(wxString::Format("boot.wim has %d image(s)", infos.size())));
+    int index = 1;
+    for(std::vector<wxString>::iterator itr = infos.begin(), itr_end = infos.end(); itr != itr_end; itr++)
+    {
+        wim_image_names.push_back((*itr).Upper());
+        wxQueueEvent(event_handler, new MsgEvent(wxString::Format("  [%d] %s", index, *itr)));
+        index++;
+    }
+
+    {
+    int image_number = 1;
+    WIMJobStatus result = wim.GetPEImageNumber(bootwim_path.GetFullPath(), &image_number);
+    if(result != WIMJobStatus::SUCCESS)
+    {
+        wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to get PE image number(%d)", result)));
+        goto FOURTH_STEP;
+    }
+    wxQueueEvent(event_handler, new MsgEvent("Trying to export an image"));
+    result = wim.Export(bootwim_path.GetFullPath(), image_number, export_target_path.GetFullPath());
+    if(result != WIMJobStatus::SUCCESS)
+    {
+        wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to export an image(%d)", result)));
+        goto FOURTH_STEP;
+    }
+    }
+
+    }
+
+FOURTH_STEP:
+    {
+    const CSimpleIni::TKeyVal* key_value_pair = ini.GetSection(_T("ExtractFileFromBootWIM"));
+    if(key_value_pair)
+    {
+        for(CSimpleIni::TKeyVal::const_iterator itr = key_value_pair->begin(),
+            itr_end = key_value_pair->end(); itr != itr_end; itr++)
+        {
+            wxString key(itr->first.pItem);
+            wxString line(itr->second);
+            int c_index = line.Find(',');
+            if(c_index == -1) continue;
+            wxString from(line.SubString(0, c_index-1));
+            wxString to(line.SubString(c_index+1, line.Length()-1));
+            from.Trim();
+            from.Trim(false);
+            to.Trim();
+            to.Trim(false);
+            EnvironmentVariables::ReplaceEnvVars(&from);
+            EnvironmentVariables::ReplaceEnvVars(&to);
+
+            WIMExtractSubCommands sub_cmd = WIMExtractSubCommands::NORMAL;
+            if(key.Upper().StartsWith("FILENOTEXIST"))
+            {
+                sub_cmd = WIMExtractSubCommands::DROPFILENAME;
+                if(wxFileExists(to))
+                  continue;
+            }
+            
+            if(key.Upper().StartsWith("RENAME"))
+              sub_cmd = WIMExtractSubCommands::RENAME;
+
+            WIMJobStatus result = wim.Extract(export_target_path.GetFullPath(), 1, from, to, sub_cmd);
+            if(result != WIMJobStatus::SUCCESS)
+            {
+                wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to extract files(%d)", result)));
+            }
+        }
+    }
+    
+    }
+    }
+
+FIFTH_STEP:
+    {
+    wxFileName tmp_path = WorkDir::GetWorkDir();
+    tmp_path.AppendDir("tmp");
+
+    {
+        std::vector<tstring> filenames =
+        {
+            _T("etfsboot.com"), _T("efisys.bin")
+        };
+        for(std::vector<tstring>::iterator itr = filenames.begin(), itr_end = filenames.end(); itr != itr_end; itr++)
+        {
+            tstring filename = *itr;
+            tmp_path.SetFullName(filename);
+            bool file_exists = tmp_path.FileExists();
+            file_exist_map[filename] = file_exists;
+        }
+    }
+    
+    }
+
+SIXTH_STEP:
+    {
+    wxQueueEvent(event_handler, new MsgEvent(wxEmptyString));
+    wxQueueEvent(event_handler, new MsgEvent(ttt("ISODesc1")));
+    wxQueueEvent(event_handler, new MsgEvent(ttt("ISODesc2")));
+
+    wxString str_arc("  ");
+    str_arc << ttt("ISODesc_Arch");
+    str_arc << " : ";
+    wxQueueEvent(event_handler, new MsgEvent(str_arc, true, false));
+    str_arc = wxEmptyString;
+    if(find(wim_image_names, "X86"))
+      str_arc << "[32bit] ";
+    if(find(wim_image_names, "64"))
+      str_arc << "[64bit] ";
+    wxQueueEvent(event_handler, new MsgEvent(str_arc, wxColor(0, 0, 255), false, true));
+
+    wxString str_sys("  ");
+    str_sys << ttt("ISODesc_System");
+    str_sys << " : ";
+    wxQueueEvent(event_handler, new MsgEvent(str_sys, true, false));
+    str_sys = wxEmptyString;
+    if(file_exist_map[_T("etfsboot.com")])
+       str_sys << "[MBR(BIOS)] ";
+    if(file_exist_map[_T("efisys.bin")])
+       str_sys << "[GPT(UEFI)] ";
+    wxQueueEvent(event_handler, new MsgEvent(str_sys, wxColor(0, 0, 255), false, true));
+
+    wxQueueEvent(event_handler, new MsgEvent(wxEmptyString));
+    wxQueueEvent(event_handler, new MsgEvent(ttt("ClickNextToProceed")));
+    }
+
+END:
+    if(iso != nullptr)
+      delete iso;
+
+    SetStateComplete();
+    return nullptr;
+}
+
