@@ -93,11 +93,6 @@ FIRST_STEP:
     }
 
     wxQueueEvent(event_handler, new MsgEvent("Start checking files"));
-    if(!iso->FileExists("/sources/boot.wim"))
-    {
-        wxQueueEvent(event_handler, new MsgEvent("Warning : Cannot find /sources/boot.wim"));
-        goto SIXTH_STEP;
-    }
 
     }
 
@@ -115,12 +110,34 @@ SECOND_STEP:
     export_target_path.SetExt("wim");
 
     {
-    wxQueueEvent(event_handler, new MsgEvent("Trying to extract /sources/boot.wim"));
+    wxString boot_wim_internal_path("/sources/boot.wim");
+    const CSimpleIni::TKeyVal* key_value_pair = ini.GetSection(_T("ExtractBootWIM"));
+    if(key_value_pair)
+    {
+        for(CSimpleIni::TKeyVal::const_iterator itr = key_value_pair->begin(),
+            itr_end = key_value_pair->end(); itr != itr_end; itr++)
+        {
+            wxString line(itr->second);
+            line.Trim();
+            line.Trim(false);
+            boot_wim_internal_path = line;
+
+            if(!iso->FileExists(boot_wim_internal_path))
+            {
+                wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Cannot find %s", boot_wim_internal_path)));
+                continue;
+            }
+            
+            break;
+        }
+    }
+
+    wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Trying to extract %s", boot_wim_internal_path)));
     iso->EnableReportProgressFile(true);
-    ISOJobStatus result = iso->ExtractFile("/sources/boot.wim", bootwim_path.GetFullPath());
+    ISOJobStatus result = iso->ExtractFile(boot_wim_internal_path, bootwim_path.GetFullPath());
     if(result != ISOJobStatus::SUCCESS)
     {
-        wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Warning : Failed to extract /sources/boot.wim (%d)", result)));
+        wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Warning : Failed to extract boot.wim (%d)", result)));
         goto SIXTH_STEP;
     }
     wxQueueEvent(event_handler, new ProgressEvent(100.));
