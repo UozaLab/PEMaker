@@ -1,37 +1,75 @@
+ifeq ($(ARCH), 32)
+MSYSTEM = MINGW32
+endif
+
+ifeq ($(MSYSTEM), MINGW32)
+ARCH = 32
+else
+ARCH = 64
+endif
+
+ENABLE_DEBUG ?= 1
 WXDIR = /home/Administrator/wxWidgets-3.2.10
 WXINCLUDE = $(WXDIR)/include
+
+ifeq ($(ARCH), 32)
 WXLIB = $(WXDIR)/build-release/lib
+else
+WXLIB = $(WXDIR)/build-release64/lib
+endif
+
 EXTDIR = /home/Administrator/extlib
 
 SRCS = App.cpp BaseFrame.cpp FrameImpl.cpp MiscWx.cpp tstring.cpp RegistryHive.cpp\
        Widgets/PrevNextPanel.cpp Widgets/ProgressPanel.cpp Widgets/SimpleButton.cpp\
        Worker/Events.cpp Worker/MakePEImage.cpp Worker/ISO.cpp Worker/WIM.cpp Worker/MakeISO.cpp\
-       Worker/CheckISOImage.cpp
+       Worker/CheckISOImage.cpp \
+       FileSystem/DiskInfo.cpp
 RESOURCES = file.rc icon.rc version.rc
 
 OBJS = $(SRCS:.cpp=.o)
 RESOURCE_OBJS = $(RESOURCES:.rc=.o)
 
 CFLAGS = -I./ -I$(EXTDIR)/include -I$(WXINCLUDE) \
-                   -I$(WXLIB)/wx/include/msw-unicode-static-3.2 \
-                    -std=c++11 -Wno-deprecated\
-                   -D_FILE_OFFSET_BITS=64  -D__WXMSW__  -D_UNICODE -DUNICODE -D__MINGW_USE_VC2005_COMPAT -D_WINDOWS\
-                   -DNDEBUG
-#                   -DDEBUG -g -O0
+         -std=c++11 -Wno-deprecated\
+         -D_FILE_OFFSET_BITS=64  -D__WXMSW__  -D_UNICODE -DUNICODE -D__MINGW_USE_VC2005_COMPAT -D_WINDOWS
 
-#LFLAGS = -L$(WXLIB) -L$(EXTDIR)/lib -mwindows -mthreads -static -static-libgcc
-LFLAGS = -L$(WXLIB) -L$(EXTDIR)/lib -mwindows -mthreads -static -static-libgcc -s\
- -Wl,--major-os-version=6 -Wl,--minor-os-version=1 -Wl,--major-subsystem-version=6 -Wl,--minor-subsystem-version=1
+LFLAGS = -L$(WXLIB) -mwindows -mthreads -static -static-libgcc\
+         -Wl,--major-os-version=6 -Wl,--minor-os-version=1 -Wl,--major-subsystem-version=6 -Wl,--minor-subsystem-version=1
+
+ifeq ($(ARCH), 32)
+	LFLAGS += -L$(EXTDIR)/lib
+	CFLAGS += -I$(WXDIR)/build-release/lib/wx/include/msw-unicode-static-3.2
+else
+	LFLAGS += -L$(EXTDIR)/lib64
+	CFLAGS += -I$(WXDIR)/build-release64/lib/wx/include/msw-unicode-static-3.2
+endif
+
+ifeq ($(ENABLE_DEBUG), 1)
+	CFLAGS += -DDEBUG -g -O0
+else
+	CFLAGS += -DNDEBUG
+	LFLAGS += -s
+endif
+
+
+
 LIBS =          -lwx_mswu_core-3.2 \
                 -lwx_baseu-3.2 \
-                -lwxjpeg-3.2 -lwxregexu-3.2 -lwxscintilla-3.2 -lpng -ltiff -lrpcrt4 \
+                -lwxjpeg-3.2 -lwxscintilla-3.2 -lwxpng-3.2 -lwxtiff-3.2 -lrpcrt4 \
+                -lpcre2-16 \
                 -loleaut32 -lole32 -luuid -luxtheme -lwinspool -lshell32 -lshlwapi -lcomctl32 \
                 -lcomdlg32 -ladvapi32 -lversion -lws2_32 -lgdi32 -loleacc -lwinhttp -lkernel32 -luser32\
                 -lwim -lckfilesystem -lckcore -lz -lzstd -lntdll\
-                -ludf -liso9660 -lcdio -liconv -lwinmm
+                -ludf -liso9660 -lcdio -liconv -lwinmm\
+                -lsetupapi
 
 CC = g++
-TARGET = PEMaker.exe
+ifeq ($(ARCH), 32)
+TARGET = PEMaker32.exe
+else
+TARGET = PEMaker64.exe
+endif
 
 $(TARGET): $(OBJS) $(RESOURCE_OBJS)
 	$(CC) $(OBJS) $(RESOURCE_OBJS) $(LFLAGS) $(LIBS) -o $(TARGET)

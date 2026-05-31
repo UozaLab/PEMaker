@@ -16,7 +16,10 @@ ClickNextToProceed = 次へを押してください
 QuitOrProceed = このプログラムを終了できます。さらに操作する場合は次へを押してください
 FinishISOFileCreation = ISOファイルを作成しました
 
-SelectFileToBuild = Windowsのインストールファイルを選択してください (*.iso)
+UseInternalRE = リカバリ領域を利用してWinPEを作成する
+SelectFileToBuild = Windowsのインストールファイルを選択する (*.iso)
+MethodDesc1 = WinPEのISOファイルの作成方法を選んでください
+MethodDesc2 = Windowsインストール用のISOファイルを持っていなければ上を選択してください
 Title_CheckISO = ファイルをチェックしています
 Title_Select_Arch = CPUアーキテクチャを選択
 Title_Select_System = パーティションとシステムの種類を選択

@@ -16,7 +16,10 @@ ClickNextToProceed = To continue, click Next.
 QuitOrProceed = You can close this program or click Next to perform additional actions.
 FinishISOFileCreation = Success to make the ISO file
 
+UseInternalRE = Use an internal Windows Recovery Environment
 SelectFileToBuild = Select a Windows installer file (*.iso)
+MethodDesc1 = Select how to make WinPE ISO file.
+MethodDesc2 = If you don't have a Windows installation ISO file, select the top option.
 Title_CheckISO = Checking files
 Title_Select_Arch = Select the CPU architecture
 Title_Select_System = Select the partitioning style and the system type

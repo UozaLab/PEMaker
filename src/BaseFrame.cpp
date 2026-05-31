@@ -183,8 +183,15 @@ Container_Main::Container_Main( wxWindow* parent, wxWindowID id, const wxString&
 	wxBoxSizer* bSizer191;
 	bSizer191 = new wxBoxSizer( wxVERTICAL );
 
+	m_customControl611 = new SimpleButton( m_panel171, wxID_RESTORE_SELECTFILE, wxDefaultPosition, wxDefaultSize, 0 );
+	bSizer191->Add( m_customControl611, 0, wxEXPAND|wxLEFT|wxRIGHT|wxTOP, 12 );
+
 	m_customControl61 = new SimpleButton( m_panel171, wxID_RESTORE_SELECTFILE, wxDefaultPosition, wxDefaultSize, 0 );
 	bSizer191->Add( m_customControl61, 0, wxEXPAND|wxLEFT|wxRIGHT|wxTOP, 12 );
+
+	m_method = new wxStaticText( m_panel171, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+	m_method->Wrap( -1 );
+	bSizer191->Add( m_method, 0, wxLEFT|wxTOP, 12 );
 
 
 	bSizer191->Add( 0, 0, 1, wxEXPAND, 0 );

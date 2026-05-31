@@ -133,20 +133,36 @@ Container_MainImpl::Container_MainImpl(FrameImpl* frame_impl)
     m_choice1->Show(false);
     
     m_title->SetLabel(wxString::Format("PEMaker %s", Utility::GetVersion()));
+
+    Utility::SetIcon(m_customControl611, IDB_PNG16, ttt("UseInternalRE"));
+    m_customControl611->SetFrameMode(true);
+    m_customControl611->SetNormalColour(COLOR_BUTTON_FACE_FRAME);
+    m_customControl611->Bind(myEVT_SimpleButtonClicked, &Container_MainImpl::OnClickREButton, this);
+
     Utility::SetIcon(m_customControl61, IDB_PNG9, ttt("SelectFileToBuild"));
     m_customControl61->SetFrameMode(true);
     m_customControl61->SetNormalColour(COLOR_BUTTON_FACE_FRAME);
-    m_customControl61->Bind(myEVT_SimpleButtonClicked, &Container_MainImpl::OnClickButton, this);
+    m_customControl61->Bind(myEVT_SimpleButtonClicked, &Container_MainImpl::OnClickISOButton, this);
+
+    m_method->SetLabel(wxString::Format("%s\r\n%s", ttt("MethodDesc1"), ttt("MethodDesc2")));
+    
     Layout();
 }
 
 void Container_MainImpl::OnClose( wxCloseEvent& event )
 {
-    m_customControl61->Unbind(myEVT_SimpleButtonClicked, &Container_MainImpl::OnClickButton, this);
+    m_customControl61->Unbind(myEVT_SimpleButtonClicked, &Container_MainImpl::OnClickISOButton, this);
+    m_customControl611->Unbind(myEVT_SimpleButtonClicked, &Container_MainImpl::OnClickREButton, this);
     Destroy();
 }
 
-void Container_MainImpl::OnClickButton( wxCommandEvent& event )
+void Container_MainImpl::OnClickREButton( wxCommandEvent& event )
+{
+    frame_impl->Holder()->ExtractMethod = EXTRACT_BOOT_WIM_FROM_RE;
+    Container_Util::SetNewframe(new Container_CheckISO(frame_impl));
+}
+
+void Container_MainImpl::OnClickISOButton( wxCommandEvent& event )
 {
     wxFileDialog openFileDialog(nullptr, ttt("OpenImageFile"), "", "",
                                 "ISO files (*.iso)|*.iso|All (*)|*", 
@@ -154,6 +170,7 @@ void Container_MainImpl::OnClickButton( wxCommandEvent& event )
     if (openFileDialog.ShowModal() == wxID_CANCEL)
         return;
 
+    frame_impl->Holder()->ExtractMethod = EXTRACT_BOOT_WIM_FROM_ISO;
     frame_impl->Holder()->FilePath.IsoFilePath = openFileDialog.GetPath();
     Container_Util::SetNewframe(new Container_CheckISO(frame_impl));
 }

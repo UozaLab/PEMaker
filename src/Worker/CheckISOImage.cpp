@@ -19,8 +19,9 @@
 #include "ISO.h"
 #include "WIM.h"
 #include "MiscWx.h"
-#include <wx/stdpaths.h>
 #include "tstring.h"
+#include "FileSystem/DiskInfo.h"
+#include <wx/stdpaths.h>
 #include <vector>
 #include <map>
 
@@ -39,6 +40,121 @@ bool find(const std::vector<wxString>& strings, wxString str)
     }
     return false;
 }
+
+bool CheckISOImage::try_copy_winre(tstring src_path, tstring dest_path)
+{
+    bool result = false;
+    HANDLE h_read = INVALID_HANDLE_VALUE;
+    HANDLE h_write = INVALID_HANDLE_VALUE;
+    LONGLONG sum_bytes_read = 0LL;
+    unsigned int progress_pre = 0;
+
+    h_read = CreateFile(src_path.c_str(),
+                        GENERIC_READ,
+                        FILE_SHARE_READ,
+                        NULL,
+                        OPEN_EXISTING,
+                        0, 0);
+    if(h_read == INVALID_HANDLE_VALUE)
+      goto END;
+
+    h_write = CreateFile(dest_path.c_str(),
+                         GENERIC_WRITE,
+                         0,
+                         NULL,
+                         CREATE_ALWAYS,
+                         FILE_ATTRIBUTE_NORMAL,
+                         NULL);
+    if(h_write == INVALID_HANDLE_VALUE)
+      goto END;
+
+    wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Found %s", src_path)));
+    wxQueueEvent(event_handler, new MsgEvent("Start copying..."));
+    wxQueueEvent(event_handler, new ProgressEvent(0));
+    LARGE_INTEGER file_size;
+    GetFileSizeEx(h_read, &file_size);
+
+    char buff[4096];
+    DWORD bytes_read;
+    DWORD bytes_write;
+    while(true)
+    {
+        if(TerminateRequired()) break;
+        if(!ReadFile(h_read, buff, sizeof(buff), &bytes_read, NULL))
+        {
+            goto END;
+        }
+        if(!bytes_read)
+        {
+            wxQueueEvent(event_handler, new ProgressEvent(100));
+            result = true;
+            break;
+        }
+        
+        if(!WriteFile(h_write, buff, bytes_read, &bytes_write, NULL))
+        {
+            goto END;
+        }
+        sum_bytes_read += bytes_read;
+        double progress = ((double)sum_bytes_read / (double)file_size.QuadPart) * 100.0;
+        if(progress_pre != (unsigned int) progress)
+          wxQueueEvent(event_handler, new ProgressEvent((unsigned int) progress));
+        progress_pre = (unsigned int) progress;
+    }
+    
+END:
+    if(h_read != INVALID_HANDLE_VALUE)
+      CloseHandle(h_read);
+    if(h_write != INVALID_HANDLE_VALUE)
+      CloseHandle(h_write);
+
+    return result;
+}
+
+bool CheckISOImage::copy_winre(tstring volume_name, tstring dest_path)
+{
+    if(try_copy_winre(volume_name + _T("\\Recovery\\WindowsRE\\Winre.wim"), dest_path))
+      return true;
+    if(TerminateRequired())
+      return false;
+    if(try_copy_winre(volume_name + _T("\\Windows\\System32\\Recovery\\Winre.wim"), dest_path))
+      return true;
+
+    return false;
+}
+
+bool CheckISOImage::search_for_bootwim()
+{
+    wxFileName bootwim_path = WorkDir::GetWorkDir();
+    bootwim_path.AppendDir("tmp");
+    bootwim_path.SetName("boot");
+    bootwim_path.SetExt("wim");
+
+    // map<DiskNumber, map<PartitionNumber, VolumeInfo>>
+    shared_ptr<std::map<DWORD, std::map<DWORD, VolumeInfo>>> vis = DiskInfoFactory::GetVolumeInfos();
+    for(std::map<DWORD, std::map<DWORD, VolumeInfo>>::iterator itr = vis->begin(), itr_end = vis->end();
+        itr != itr_end; itr++)
+    {
+        DWORD disk_id = itr->first;
+        std::map<DWORD, VolumeInfo> volumes = itr->second;
+        for(std::map<DWORD, VolumeInfo>::iterator itr_inner = volumes.begin(), itr_inner_end = volumes.end();
+            itr_inner != itr_inner_end; itr_inner++)
+        {
+            if(TerminateRequired()) return false;
+            VolumeInfo vi = itr_inner->second;
+            DWORD part_id = itr_inner->first;
+            tstring fsname = vi.FilesystemInfo.TypeInfo.FileSystemName;
+            if(vi.DriveType != 3/*FIXED*/) continue;
+            if(fsname != _T("NTFS") && fsname != _T("FAT32")) continue;
+            if(copy_winre(vi.VolumeGUIDPath, bootwim_path.GetFullPath().wc_str()))
+              return true;
+        }
+        if(TerminateRequired()) return false;
+    }
+    
+    return false;
+}
+
 
 void* CheckISOImage::Entry()
 {
@@ -85,6 +201,28 @@ PREP_STEP:
 
 FIRST_STEP:
     {
+    wxFileName bootwim_path = WorkDir::GetWorkDir();
+    bootwim_path.AppendDir("tmp");
+    bootwim_path.SetName("boot");
+    bootwim_path.SetExt("wim");
+
+    wxFileName export_target_path = WorkDir::GetWorkDir();
+    export_target_path.AppendDir("media");
+    export_target_path.AppendDir("sources");
+    export_target_path.SetName("boot");
+    export_target_path.SetExt("wim");
+
+    {
+    if(data->ExtractMethod == EXTRACT_BOOT_WIM_FROM_RE)
+    {
+        if(!search_for_bootwim())
+        {
+            wxQueueEvent(event_handler, new ErrorEvent("Cannot find the recovery environment"));
+            goto END;
+        }
+        goto THIRD_STEP;
+    }
+
     iso = ISO::CreateExtractor(this, data->FilePath.IsoFilePath);
     if(iso == nullptr)
     {
@@ -97,18 +235,6 @@ FIRST_STEP:
     }
 
 SECOND_STEP:
-    {
-    wxFileName bootwim_path = WorkDir::GetWorkDir();
-    bootwim_path.AppendDir("tmp");
-    bootwim_path.SetName("boot");
-    bootwim_path.SetExt("wim");
-
-    wxFileName export_target_path = WorkDir::GetWorkDir();
-    export_target_path.AppendDir("media");
-    export_target_path.AppendDir("sources");
-    export_target_path.SetName("boot");
-    export_target_path.SetExt("wim");
-
     {
     wxString boot_wim_internal_path("/sources/boot.wim");
     const CSimpleIni::TKeyVal* key_value_pair = ini.GetSection(_T("ExtractBootWIM"));
@@ -153,7 +279,7 @@ THIRD_STEP:
         goto FOURTH_STEP;
     }
 
-    wxQueueEvent(event_handler, new MsgEvent(wxString::Format("boot.wim has %d image(s)", infos.size())));
+    wxQueueEvent(event_handler, new MsgEvent(wxString::Format("boot.wim has %zu image(s)", infos.size())));
     int index = 1;
     for(std::vector<wxString>::iterator itr = infos.begin(), itr_end = infos.end(); itr != itr_end; itr++)
     {

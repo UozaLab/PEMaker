@@ -15,24 +15,19 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef __CHECKISOIMAGE_H__
-#define __CHECKISOIMAGE_H__
+#ifndef __DISK_INFO_H__
+#define __DISK_INFO_H__
 
-#include "Events.h"
-#include "DataHolder.h"
-#include "tstring.h"
-#include <wx/utils.h>
-#include <wx/filename.h>
+#include <windows.h>
+#include <map>
+#include "smart_ptr.h"
+#include "VolumeInfo.h"
 
-class CheckISOImage : public CustomThread {
-  private:
-    DataHolder* data;
-    bool search_for_bootwim();
-    bool copy_winre(tstring volume_name, tstring dest_path);
-    bool try_copy_winre(tstring src_path, tstring dest_path);
-  public:
-    CheckISOImage(wxEvtHandler *event_handler, DataHolder* _data);
-    virtual void *Entry();
+class DiskInfoFactory
+{
+public:
+    // map<DiskNumber, map<PartitionNumber, VolumeInfo>>
+    static shared_ptr<std::map<DWORD, std::map<DWORD, VolumeInfo>>> GetVolumeInfos();
 };
-#endif
 
+#endif

@@ -58,6 +58,7 @@ IDB_PNG12               RCDATA                  "icons\\HardDrive.png"
 IDB_PNG13               RCDATA                  "icons\\PYWeb_16x.png"
 IDB_PNG14               RCDATA                  "icons\\Exit.png"
 IDB_PNG15               RCDATA                  "icons\\USB.png"
+IDB_PNG16               RCDATA                  "icons\\DesktopBlue.png"
 
 
 /////////////////////////////////////////////////////////////////////////////

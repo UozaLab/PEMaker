@@ -1,3 +1,6 @@
+0.0.3 (2026.05.27)
+    support for creating an iso file from winre.wim
+
 0.0.2 (2026.04.23)
     support for locating the boot.wim path
 

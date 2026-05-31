@@ -65,11 +65,14 @@ PREP_STEP:
 
 FIRST_STEP:
     {
-    iso = ISO::CreateExtractor(this, data->FilePath.IsoFilePath);
-    if(iso == nullptr)
+    if(data->ExtractMethod == EXTRACT_BOOT_WIM_FROM_ISO)
     {
-        wxQueueEvent(event_handler, new ErrorEvent("Failed to open iso file"));
-        goto END;
+        iso = ISO::CreateExtractor(this, data->FilePath.IsoFilePath);
+        if(iso == nullptr)
+        {
+            wxQueueEvent(event_handler, new ErrorEvent("Failed to open iso file"));
+            goto END;
+        }
     }
 
     wxFileName catalog_file_path = WorkDir::GetWorkDir();
@@ -168,6 +171,9 @@ THIRD_END:
 
 FOURTH_STEP:
     {
+    if(data->ExtractMethod == EXTRACT_BOOT_WIM_FROM_RE)
+      goto FIFTH_STEP;
+
     iso->EnableReportProgressFile(false);
     const CSimpleIni::TKeyVal* key_value_pair = ini.GetSection(_T("ExtractFolderFromISO"));
     if(key_value_pair)

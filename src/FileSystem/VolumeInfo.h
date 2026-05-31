@@ -15,24 +15,33 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef __CHECKISOIMAGE_H__
-#define __CHECKISOIMAGE_H__
+#ifndef __VOLUME__H__
+#define __VOLUME__H__
 
-#include "Events.h"
-#include "DataHolder.h"
+#include <windows.h>
 #include "tstring.h"
-#include <wx/utils.h>
-#include <wx/filename.h>
+#include "FsInfo.h"
 
-class CheckISOImage : public CustomThread {
-  private:
-    DataHolder* data;
-    bool search_for_bootwim();
-    bool copy_winre(tstring volume_name, tstring dest_path);
-    bool try_copy_winre(tstring src_path, tstring dest_path);
-  public:
-    CheckISOImage(wxEvtHandler *event_handler, DataHolder* _data);
-    virtual void *Entry();
+struct VolumeInfo
+{
+    bool Invalid;
+
+    FSInfo FilesystemInfo;
+    tstring VolumeGUIDPath;
+    tstring PathNames;// drive letter
+    UINT DriveType;
+    STORAGE_DEVICE_NUMBER StorageDeviceNumber;// device#/partition#/type
+
+    VolumeInfo()
+    {
+        Invalid = false;
+        VolumeGUIDPath = _T("");
+        PathNames = _T("");
+        DriveType = 0;
+        StorageDeviceNumber.DeviceNumber = 0;
+        StorageDeviceNumber.DeviceType = 0;
+        StorageDeviceNumber.PartitionNumber = 0;
+    }
 };
-#endif
 
+#endif

@@ -75,7 +75,7 @@ class BaseFrame : public wxFrame
 	public:
 		wxPanel* m_panel_root;
 
-		BaseFrame( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxEmptyString, const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 500,300 ), long style = wxDEFAULT_FRAME_STYLE|wxTAB_TRAVERSAL );
+		BaseFrame( wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = wxT("PEMaker"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxSize( 500,300 ), long style = wxDEFAULT_FRAME_STYLE|wxTAB_TRAVERSAL );
 
 		~BaseFrame();
 
@@ -93,7 +93,9 @@ class Container_Main : public wxFrame
 		wxPanel* m_panel71;
 		wxStaticText* m_title;
 		wxPanel* m_panel171;
+		SimpleButton* m_customControl611;
 		SimpleButton* m_customControl61;
+		wxStaticText* m_method;
 		wxPanel* m_panel33;
 		wxStaticBitmap* m_bitmap1;
 		wxChoice* m_choice1;

@@ -76,7 +76,8 @@ class Container_MainImpl : public Container_Main, ContainerCommon
   public:
     Container_MainImpl(FrameImpl* frame_impl);
     void OnClose( wxCloseEvent& event );
-    void OnClickButton( wxCommandEvent& event );
+    void OnClickREButton( wxCommandEvent& event );
+    void OnClickISOButton( wxCommandEvent& event );
     void OnLeftDown( wxMouseEvent& event );
     void OnChoice( wxCommandEvent& event );
 

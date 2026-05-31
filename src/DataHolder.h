@@ -40,10 +40,17 @@ struct FILE_PATH
     }
 };
 
+enum EXTRACT_BOOT_WIM_METHOD
+{
+    EXTRACT_BOOT_WIM_FROM_ISO,
+    EXTRACT_BOOT_WIM_FROM_RE,
+};
+
 struct DataHolder
 {
     FILE_PATH FilePath;
     ISO_DATA ISOData;
+    EXTRACT_BOOT_WIM_METHOD ExtractMethod;
 };
 
 #endif
