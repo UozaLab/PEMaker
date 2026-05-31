@@ -15,6 +15,14 @@ PEMaker makes a bootable ISO file for a Windows Preinstallation Environment (Win
 * Portable. No installation needed
 * Free for personal and commercial use
 
+## Download Binaries
+
+* [GitHub Releases](https://github.com/UozaLab/PEMaker/releases)
+
+## Screenshot
+
+![](https://github.com/UozaLab/PEMaker/wiki/images/PEMaker_ScreenShot.png)
+
 ## Project Status
 
 This project is in development phase.
