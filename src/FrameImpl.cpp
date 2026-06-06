@@ -116,8 +116,12 @@ Container_MainImpl::Container_MainImpl(FrameImpl* frame_impl)
 {
     wxFileName file = wxFileName(wxStandardPaths::Get().GetExecutablePath());
     file.AppendDir("lang");
+    wxFileName pe_lang_folder(file);
+    pe_lang_folder.AppendDir("PE");
+    if(pe_lang_folder.DirExists())
+      file.AppendDir("PE");
     wxArrayString as;
-    int num_files = wxDir::GetAllFiles(file.GetPath(), &as);
+    int num_files = wxDir::GetAllFiles(file.GetPath(), &as, "*.txt", wxDIR_FILES);
     for(int i = 0; i < num_files; i++)
     {
         wxFileName lang_file = wxFileName(as[i]);

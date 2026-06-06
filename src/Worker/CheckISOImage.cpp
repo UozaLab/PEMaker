@@ -184,21 +184,6 @@ PREP_STEP:
         goto END;
     }
 
-    {
-    const TCHAR* winpeshl_ini_value = ini.GetValue(_T("winpeshl.ini"), _T("key"));
-    if(winpeshl_ini_value != nullptr)
-    {
-        wxFileName tmp_path = WorkDir::GetWorkDir();
-        tmp_path.AppendDir("tmp");
-        tmp_path.SetFullName("winpeshl.ini");
-        wxFile ini_file(tmp_path.GetFullPath(), wxFile::write);
-        if(ini_file.IsOpened())
-        {
-            ini_file.Write(winpeshl_ini_value);
-        }
-    }
-    }
-
 FIRST_STEP:
     {
     wxFileName bootwim_path = WorkDir::GetWorkDir();
@@ -217,7 +202,8 @@ FIRST_STEP:
     {
         if(!search_for_bootwim())
         {
-            wxQueueEvent(event_handler, new ErrorEvent("Cannot find the recovery environment"));
+            wxQueueEvent(event_handler, new ErrorEvent(ttt("InternalREError")));
+            wxQueueEvent(event_handler, new MsgEvent(ttt("InternalREAdvise")));
             goto END;
         }
         goto THIRD_STEP;

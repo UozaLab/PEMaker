@@ -63,6 +63,21 @@ PREP_STEP:
         goto END;
     }
 
+    {
+    const TCHAR* winpeshl_ini_value = ini.GetValue(data->ISOData.Arch32bit ? _T("winpeshl.ini_x86") : _T("winpeshl.ini_x64"), _T("key"));
+    if(winpeshl_ini_value != nullptr)
+    {
+        wxFileName tmp_path = WorkDir::GetWorkDir();
+        tmp_path.AppendDir("tmp");
+        tmp_path.SetFullName("winpeshl.ini");
+        wxFile ini_file(tmp_path.GetFullPath(), wxFile::write);
+        if(ini_file.IsOpened())
+        {
+            ini_file.Write(winpeshl_ini_value);
+        }
+    }
+    }
+
 FIRST_STEP:
     {
     if(data->ExtractMethod == EXTRACT_BOOT_WIM_FROM_ISO)
@@ -243,7 +258,7 @@ FIFTH_STEP:
     }
 
     // Add
-    key_value_pair = ini.GetSection(data->ISOData.Mbr ? _T("Add_x86") : _T("Add_x64"));
+    key_value_pair = ini.GetSection(data->ISOData.Arch32bit ? _T("Add_x86") : _T("Add_x64"));
     if(key_value_pair)
     {
         for(CSimpleIni::TKeyVal::const_iterator itr = key_value_pair->begin(),
@@ -260,7 +275,7 @@ FIFTH_STEP:
             add_to.Trim(false);
             EnvironmentVariables::ReplaceEnvVars(&add_from);
             EnvironmentVariables::ReplaceEnvVars(&add_to);
-            if(!wxFileName::FileExists(add_from))
+            if(!wxFileName::FileExists(add_from) && !wxFileName::DirExists(add_from))
             {
                 wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Skip adding %s", add_from)));
                 continue;
