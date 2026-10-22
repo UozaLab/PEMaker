@@ -23,9 +23,9 @@ PEMaker makes a bootable ISO file for a Windows Preinstallation Environment (Win
 
 ![](https://github.com/UozaLab/PEMaker/wiki/images/PEMaker_ScreenShot.png)
 
-## Project Status
+## Information
 
-This project is in development phase.
+* [Website](https://uozalab.web.fc2.com)
 
 ## Compiling
 
@@ -35,4 +35,3 @@ This project is in development phase.
 * libcdio-2.3.0
 * wimlib-1.14.4
 * wxWidgets-3.2.10
-

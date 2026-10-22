@@ -25,11 +25,117 @@
 #include "RegistryHive.h"
 #include <wx/stdpaths.h>
 #include <wx/filefn.h>
+#include <wx/regex.h>
 #include <shlobj.h>
 
 MakePEImage::MakePEImage(wxEvtHandler *event_handler, DataHolder* _data)
      : CustomThread(event_handler), data(_data)
 {
+}
+
+wxString MakePEImage::execute_cmd(const wxString& cmd)
+{
+    HANDLE handle_rd, handle_wr;
+    SECURITY_ATTRIBUTES security;
+    ZeroMemory(&security, sizeof(SECURITY_ATTRIBUTES));
+    security.nLength = sizeof(SECURITY_ATTRIBUTES);
+    security.lpSecurityDescriptor = NULL;
+    security.bInheritHandle = TRUE;
+    if ( !CreatePipe(&handle_rd, &handle_wr, &security, 0) )
+      return wxEmptyString;
+
+    if ( !SetHandleInformation(handle_rd, HANDLE_FLAG_INHERIT, 0) )
+      return wxEmptyString;
+
+    
+    STARTUPINFO si;
+    ZeroMemory(&si, sizeof(STARTUPINFO));
+    si.cb = sizeof(si);
+    si.hStdOutput = handle_wr;
+    si.hStdError = handle_wr;
+    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&pi, sizeof(PROCESS_INFORMATION));
+
+    if(!CreateProcess(nullptr, (LPWSTR) cmd.t_str(), nullptr, nullptr, true, 0, nullptr, nullptr, &si, &pi))
+    {
+        CloseHandle(handle_rd);
+        CloseHandle(handle_wr);
+        return wxEmptyString;
+    }
+
+    CloseHandle(handle_wr);
+
+    wxQueueEvent(event_handler, new ProgressEvent(0));
+    unsigned int progress_pre = 0;
+    wxRegEx r(_T("[ \\[=]+[0-9]+\.[0-9]+%[ \\]=]+[\\r]*"));
+    wxRegEx r_number(_T("[0-9]+\.[0-9]+"));
+    char buff[256];
+    DWORD bytes_read;
+    wxString buffer = wxEmptyString;
+    wxString result = wxEmptyString;
+    while(true)
+    {
+        if(TerminateRequired())
+        {
+            TerminateProcess(pi.hProcess, 0);
+            break;
+        }
+
+        bool ret = ReadFile(handle_rd, buff, sizeof(buff)-1, &bytes_read, NULL);
+        if(!ret) break;
+        if(bytes_read == 0) break;
+
+        buff[bytes_read] = '\0';
+        buffer += wxString(buff);
+
+        while(true)
+        {
+            int index = buffer.Find('\n');
+            if(index == -1) break;
+
+            wxString line = buffer.Left(index);
+
+            if(r.Matches(line))
+            {
+                double max_value = 0;
+                for(int i=0;i<r.GetMatchCount();i++)
+                {
+                    wxString matched = r.GetMatch(line, i);
+                    if(!r_number.Matches(matched)) continue;
+                    wxString matched_number = r_number.GetMatch(matched);
+                    double value;
+                    matched_number.ToDouble(&value);
+                    if(max_value < value) max_value = value;
+
+                    double progress = max_value;
+                    if(progress_pre != (unsigned int) progress)
+                    wxQueueEvent(event_handler, new ProgressEvent((unsigned int) progress));
+                    progress_pre = (unsigned int) progress;
+                }
+                r.Replace(&line, wxEmptyString);
+            }
+            
+            if(line == _T("\r")) line = wxEmptyString;
+            if(line.Length() != 0)
+            {
+                result += line;
+                result += _T("\n");
+                wxQueueEvent(event_handler, new MsgEvent(wxString::Format("%s\n", line), false, false));
+            }
+            buffer = buffer.Mid(index+1);
+        }
+        result += buffer;
+        wxQueueEvent(event_handler, new MsgEvent(buffer, false, false));
+    }
+
+    CloseHandle(handle_rd);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+
+    return result;
 }
 
 void* MakePEImage::Entry()
@@ -80,9 +186,10 @@ PREP_STEP:
 
 FIRST_STEP:
     {
+    if(TerminateRequired()) goto END;
     if(data->ExtractMethod == EXTRACT_BOOT_WIM_FROM_ISO)
     {
-        iso = ISO::CreateExtractor(this, data->FilePath.IsoFilePath);
+        iso = ISO::CreateExtractor(this, data->FilePath.FilePath);
         if(iso == nullptr)
         {
             wxQueueEvent(event_handler, new ErrorEvent("Failed to open iso file"));
@@ -106,41 +213,44 @@ FIRST_STEP:
 
 SECOND_STEP:
     {
-    const CSimpleIni::TKeyVal* key_value_pair = ini.GetSection(data->ISOData.Mbr ? _T("ExtractFileFromBootWIM_BIOS") : _T("ExtractFileFromBootWIM_UEFI"));
-    if(key_value_pair)
+    if(TerminateRequired()) goto END;
+
+    const TCHAR* section = data->ISOData.Mbr ? _T("ExtractFileFromBootWIM_BIOS") : _T("ExtractFileFromBootWIM_UEFI");
+    CSimpleIni::TNamesDepend keys;
+    ini.GetAllKeys(section, keys);
+    keys.sort(CSimpleIni::Entry::LoadOrder());
+
+    for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
+        itr != itr_end; itr++)
     {
-        for(CSimpleIni::TKeyVal::const_iterator itr = key_value_pair->begin(),
-            itr_end = key_value_pair->end(); itr != itr_end; itr++)
+        wxString key(itr->pItem);
+        wxString line(ini.GetValue(section, itr->pItem));
+        int c_index = line.Find(',');
+        if(c_index == -1) continue;
+        wxString from(line.SubString(0, c_index-1));
+        wxString to(line.SubString(c_index+1, line.Length()-1));
+        from.Trim();
+        from.Trim(false);
+        to.Trim();
+        to.Trim(false);
+        EnvironmentVariables::ReplaceEnvVars(&from);
+        EnvironmentVariables::ReplaceEnvVars(&to);
+
+        WIMExtractSubCommands sub_cmd = WIMExtractSubCommands::NORMAL;
+        if(key.Upper().StartsWith("FILENOTEXIST"))
         {
-            wxString key(itr->first.pItem);
-            wxString line(itr->second);
-            int c_index = line.Find(',');
-            if(c_index == -1) continue;
-            wxString from(line.SubString(0, c_index-1));
-            wxString to(line.SubString(c_index+1, line.Length()-1));
-            from.Trim();
-            from.Trim(false);
-            to.Trim();
-            to.Trim(false);
-            EnvironmentVariables::ReplaceEnvVars(&from);
-            EnvironmentVariables::ReplaceEnvVars(&to);
-
-            WIMExtractSubCommands sub_cmd = WIMExtractSubCommands::NORMAL;
-            if(key.Upper().StartsWith("FILENOTEXIST"))
-            {
-                sub_cmd = WIMExtractSubCommands::DROPFILENAME;
-                if(wxFileExists(to))
-                  continue;
-            }
+            sub_cmd = WIMExtractSubCommands::DROPFILENAME;
+            if(wxFileExists(to))
+              continue;
+        }
             
-            if(key.Upper().StartsWith("RENAME"))
-              sub_cmd = WIMExtractSubCommands::RENAME;
+        if(key.Upper().StartsWith("RENAME"))
+          sub_cmd = WIMExtractSubCommands::RENAME;
 
-            WIMJobStatus result = wim.Extract(export_target_path.GetFullPath(), 1, from, to, sub_cmd);
-            if(result != WIMJobStatus::SUCCESS)
-            {
-                wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to extract files(%d)", result)));
-            }
+        WIMJobStatus result = wim.Extract(export_target_path.GetFullPath(), 1, from, to, sub_cmd);
+        if(result != WIMJobStatus::SUCCESS)
+        {
+            wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to extract files(%d)", result)));
         }
     }
     }
@@ -148,6 +258,7 @@ SECOND_STEP:
 
 THIRD_STEP:
     {
+    if(TerminateRequired()) goto END;
     const wxString subkey_name("Microsoft\\Windows NT\\CurrentVersion\\WinPE");
     const wxString value_name("InstRoot");
     wxFileName tmp_path = WorkDir::GetWorkDir();
@@ -186,102 +297,110 @@ THIRD_END:
 
 FOURTH_STEP:
     {
-    if(data->ExtractMethod == EXTRACT_BOOT_WIM_FROM_RE)
+    if(TerminateRequired()) goto END;
+    if(data->ExtractMethod != EXTRACT_BOOT_WIM_FROM_ISO)
       goto FIFTH_STEP;
 
     iso->EnableReportProgressFile(false);
-    const CSimpleIni::TKeyVal* key_value_pair = ini.GetSection(_T("ExtractFolderFromISO"));
-    if(key_value_pair)
+
+    const TCHAR* section = _T("ExtractFolderFromISO");
+    CSimpleIni::TNamesDepend keys;
+    ini.GetAllKeys(section, keys);
+    keys.sort(CSimpleIni::Entry::LoadOrder());
+
+    for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
+        itr != itr_end; itr++)
     {
-        for(CSimpleIni::TKeyVal::const_iterator itr = key_value_pair->begin(),
-            itr_end = key_value_pair->end(); itr != itr_end; itr++)
+        wxString line(ini.GetValue(section, itr->pItem));
+        int c_index = line.Find(',');
+        if(c_index == -1) continue;
+        wxString from(line.SubString(0, c_index-1));
+        wxString to(line.SubString(c_index+1, line.Length()-1));
+        from.Trim();
+        from.Trim(false);
+        to.Trim();
+        to.Trim(false);
+        EnvironmentVariables::ReplaceEnvVars(&from);
+        EnvironmentVariables::ReplaceEnvVars(&to);
+        ISOJobStatus result = iso->ExtractFolder(from, to);
+        if(result != ISOJobStatus::SUCCESS)
         {
-            wxString line(itr->second);
-            int c_index = line.Find(',');
-            if(c_index == -1) continue;
-            wxString from(line.SubString(0, c_index-1));
-            wxString to(line.SubString(c_index+1, line.Length()-1));
-            from.Trim();
-            from.Trim(false);
-            to.Trim();
-            to.Trim(false);
-            EnvironmentVariables::ReplaceEnvVars(&from);
-            EnvironmentVariables::ReplaceEnvVars(&to);
-            ISOJobStatus result = iso->ExtractFolder(from, to);
-            if(result != ISOJobStatus::SUCCESS)
-            {
-                wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to extract %s(%d)", from, result)));
-            }
+            wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to extract %s(%d)", from, result)));
         }
     }
 
-    key_value_pair = ini.GetSection(_T("ExtractFileFromISO"));
-    if(key_value_pair)
+    const TCHAR* section2 = _T("ExtractFileFromISO");
+    CSimpleIni::TNamesDepend keys2;
+    ini.GetAllKeys(section2, keys2);
+    keys2.sort(CSimpleIni::Entry::LoadOrder());
+
+    for(CSimpleIni::TNamesDepend::const_iterator itr = keys2.begin(), itr_end = keys2.end();
+        itr != itr_end; itr++)
     {
-        for(CSimpleIni::TKeyVal::const_iterator itr = key_value_pair->begin(),
-            itr_end = key_value_pair->end(); itr != itr_end; itr++)
+        wxString line(ini.GetValue(section2, itr->pItem));
+        int c_index = line.Find(',');
+        if(c_index == -1) continue;
+        wxString from(line.SubString(0, c_index-1));
+        wxString to(line.SubString(c_index+1, line.Length()-1));
+        from.Trim();
+        from.Trim(false);
+        to.Trim();
+        to.Trim(false);
+        EnvironmentVariables::ReplaceEnvVars(&from);
+        EnvironmentVariables::ReplaceEnvVars(&to);
+        ISOJobStatus result = iso->ExtractFile(from, to);
+        if(result != ISOJobStatus::SUCCESS)
         {
-            wxString line(itr->second);
-            int c_index = line.Find(',');
-            if(c_index == -1) continue;
-            wxString from(line.SubString(0, c_index-1));
-            wxString to(line.SubString(c_index+1, line.Length()-1));
-            from.Trim();
-            from.Trim(false);
-            to.Trim();
-            to.Trim(false);
-            EnvironmentVariables::ReplaceEnvVars(&from);
-            EnvironmentVariables::ReplaceEnvVars(&to);
-            ISOJobStatus result = iso->ExtractFile(from, to);
-            if(result != ISOJobStatus::SUCCESS)
-            {
-                wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to extract %s(%d)", from, result)));
-            }
+            wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to extract %s(%d)", from, result)));
         }
     }
     }
 
 FIFTH_STEP:
     {
+    if(TerminateRequired()) goto END;
     wxQueueEvent(event_handler, new MsgEvent("Trying to delete and add files"));
     // Delete
     WIMCommands cmds;
-    const CSimpleIni::TKeyVal* key_value_pair = ini.GetSection(_T("Delete"));
-    if(key_value_pair)
+
+    const TCHAR* section = _T("Delete");
+    CSimpleIni::TNamesDepend keys;
+    ini.GetAllKeys(section, keys);
+    keys.sort(CSimpleIni::Entry::LoadOrder());
+
+    for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
+        itr != itr_end; itr++)
     {
-        for(CSimpleIni::TKeyVal::const_iterator itr = key_value_pair->begin(),
-            itr_end = key_value_pair->end(); itr != itr_end; itr++)
-        {
-            wxString file_to_delete(itr->second);
-            cmds.AppendDelete(file_to_delete, false);
-        }
+        wxString file_to_delete(ini.GetValue(section, itr->pItem));
+        cmds.AppendDelete(file_to_delete, false);
     }
 
     // Add
-    key_value_pair = ini.GetSection(data->ISOData.Arch32bit ? _T("Add_x86") : _T("Add_x64"));
-    if(key_value_pair)
+    const TCHAR* section2 = data->ISOData.Arch32bit ? _T("Add_x86") : _T("Add_x64");
+    CSimpleIni::TNamesDepend keys2;
+    ini.GetAllKeys(section2, keys2);
+    keys2.sort(CSimpleIni::Entry::LoadOrder());
+
+    for(CSimpleIni::TNamesDepend::const_iterator itr = keys2.begin(), itr_end = keys2.end();
+        itr != itr_end; itr++)
     {
-        for(CSimpleIni::TKeyVal::const_iterator itr = key_value_pair->begin(),
-            itr_end = key_value_pair->end(); itr != itr_end; itr++)
+        wxString line_to_add(ini.GetValue(section2, itr->pItem));
+        int c_index = line_to_add.Find(',');
+        if(c_index == -1) continue;
+        wxString add_from(line_to_add.SubString(0, c_index-1));
+        wxString add_to(line_to_add.SubString(c_index+1, line_to_add.Length()-1));
+        add_from.Trim();
+        add_from.Trim(false);
+        add_to.Trim();
+        add_to.Trim(false);
+        EnvironmentVariables::ReplaceEnvVars(&add_from);
+        EnvironmentVariables::ReplaceEnvVars(&add_to);
+        if(!wxFileName::FileExists(add_from) && !wxFileName::DirExists(add_from))
         {
-            wxString line_to_add(itr->second);
-            int c_index = line_to_add.Find(',');
-            if(c_index == -1) continue;
-            wxString add_from(line_to_add.SubString(0, c_index-1));
-            wxString add_to(line_to_add.SubString(c_index+1, line_to_add.Length()-1));
-            add_from.Trim();
-            add_from.Trim(false);
-            add_to.Trim();
-            add_to.Trim(false);
-            EnvironmentVariables::ReplaceEnvVars(&add_from);
-            EnvironmentVariables::ReplaceEnvVars(&add_to);
-            if(!wxFileName::FileExists(add_from) && !wxFileName::DirExists(add_from))
-            {
-                wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Skip adding %s", add_from)));
-                continue;
-            }
-            cmds.AppendAdd(add_from, add_to);
+            wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Skip adding %s", add_from)));
+            continue;
         }
+        cmds.AppendAdd(add_from, add_to);
     }
 
     WIMJobStatus result = wim.Update(export_target_path.GetFullPath(), 1, cmds);
@@ -294,42 +413,78 @@ FIFTH_STEP:
 
 SIXTH_STEP:
     {
+    if(TerminateRequired()) goto END;
     wxQueueEvent(event_handler, new ProgressEvent(0.));
     wxQueueEvent(event_handler, new MsgEvent("Trying to copy files"));
     // CopyFiles
-    const CSimpleIni::TKeyVal* key_value_pair = ini.GetSection(_T("CopyFile"));
-    if(key_value_pair)
+    const TCHAR* section = _T("CopyFile");
+    CSimpleIni::TNamesDepend keys;
+    ini.GetAllKeys(section, keys);
+    keys.sort(CSimpleIni::Entry::LoadOrder());
+
+    for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
+        itr != itr_end; itr++)
     {
-        for(CSimpleIni::TKeyVal::const_iterator itr = key_value_pair->begin(),
-            itr_end = key_value_pair->end(); itr != itr_end; itr++)
+        wxString line_to_copy(ini.GetValue(section, itr->pItem));
+        int c_index = line_to_copy.Find(',');
+        if(c_index == -1) continue;
+        wxString copy_from(line_to_copy.SubString(0, c_index-1));
+        wxString copy_to(line_to_copy.SubString(c_index+1, line_to_copy.Length()-1));
+        copy_from.Trim();
+        copy_from.Trim(false);
+        copy_to.Trim();
+        copy_to.Trim(false);
+        EnvironmentVariables::ReplaceEnvVars(&copy_from);
+        EnvironmentVariables::ReplaceEnvVars(&copy_to);
+        if(!wxFileName::FileExists(copy_from))
         {
-            wxString line_to_copy(itr->second);
-            int c_index = line_to_copy.Find(',');
-            if(c_index == -1) continue;
-            wxString copy_from(line_to_copy.SubString(0, c_index-1));
-            wxString copy_to(line_to_copy.SubString(c_index+1, line_to_copy.Length()-1));
-            copy_from.Trim();
-            copy_from.Trim(false);
-            copy_to.Trim();
-            copy_to.Trim(false);
-            EnvironmentVariables::ReplaceEnvVars(&copy_from);
-            EnvironmentVariables::ReplaceEnvVars(&copy_to);
-            if(!wxFileName::FileExists(copy_from))
-            {
-                wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Skip copying %s", copy_from)));
-                continue;
-            }
-            if(!wxCopyFile(copy_from, copy_to))
-            {
-                wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to copy %s", copy_from)));
-                continue;
-            }
+            wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Skip copying %s", copy_from)));
+            continue;
+        }
+        if(!wxCopyFile(copy_from, copy_to))
+        {
+            wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to copy %s", copy_from)));
+            continue;
         }
     }
     }
 
 SEVENTH_STEP:
     {
+    if(TerminateRequired()) goto END;
+    bool dism_enabled = false;
+    wxString value(ini.GetValue(_T("Options"), _T("ExecuteDISM")));
+    if(value.Upper() == _T("1") || value.Upper() == _T("TRUE"))
+    {
+        wxQueueEvent(event_handler, new MsgEvent("DISM commands execution enabled"));
+        dism_enabled = true;
+    }
+
+    if(dism_enabled)
+    {
+        const TCHAR* section = _T("DISMCmds");
+        CSimpleIni::TNamesDepend keys;
+        ini.GetAllKeys(section, keys);
+        keys.sort(CSimpleIni::Entry::LoadOrder());
+        for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
+            itr != itr_end; itr++)
+        {
+            if(TerminateRequired()) break;
+            wxString line_to_execute(ini.GetValue(section, itr->pItem));
+            line_to_execute.Trim();
+            line_to_execute.Trim(false);
+            EnvironmentVariables::ReplaceEnvVars(&line_to_execute);
+            wxString cmd = wxString::Format("dism.exe %s", line_to_execute);
+            wxQueueEvent(event_handler, new MsgEvent(cmd));
+            wxString result = execute_cmd(cmd);
+        }
+    }
+
+    }
+EIGHTH_STEP:
+    {
+    if(TerminateRequired()) goto END;
+
     wxQueueEvent(event_handler, new MsgEvent("Trying to make an iso image"));
     wxFileName iso_in = WorkDir::GetWorkDir();
     wxFileName iso_out = WorkDir::GetWorkDir();

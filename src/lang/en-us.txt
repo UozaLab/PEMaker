@@ -18,8 +18,8 @@ FinishISOFileCreation = Success to make the ISO file
 
 UseInternalRE = Use an internal Windows Recovery Environment
 SelectFileToBuild = Select a Windows installer file (*.iso)
-MethodDesc1 = Select how to make WinPE ISO file.
-MethodDesc2 = If you don't have a Windows installation ISO file, select the top option.
+OpenBootWim = Select a boot.wim
+MethodDesc = Select how to make WinPE ISO file. Normally select the top option.\nIf you have a Windows installation ISO file, select the second option.\nIf you have a winpe.wim/boot.wim, select the third option.
 InternalREError = Cannot find the recovery environment
 InternalREAdvise = Run as administrator may fix this problems
 Title_CheckISO = Checking files

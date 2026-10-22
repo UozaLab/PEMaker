@@ -148,7 +148,12 @@ Container_MainImpl::Container_MainImpl(FrameImpl* frame_impl)
     m_customControl61->SetNormalColour(COLOR_BUTTON_FACE_FRAME);
     m_customControl61->Bind(myEVT_SimpleButtonClicked, &Container_MainImpl::OnClickISOButton, this);
 
-    m_method->SetLabel(wxString::Format("%s\r\n%s", ttt("MethodDesc1"), ttt("MethodDesc2")));
+    Utility::SetIcon(m_customControl612, IDB_PNG17, ttt("OpenBootWim"));
+    m_customControl612->SetFrameMode(true);
+    m_customControl612->SetNormalColour(COLOR_BUTTON_FACE_FRAME);
+    m_customControl612->Bind(myEVT_SimpleButtonClicked, &Container_MainImpl::OnClickBootWimButton, this);
+
+    m_method->SetLabel(ttt("MethodDesc"));
     
     Layout();
 }
@@ -157,6 +162,7 @@ void Container_MainImpl::OnClose( wxCloseEvent& event )
 {
     m_customControl61->Unbind(myEVT_SimpleButtonClicked, &Container_MainImpl::OnClickISOButton, this);
     m_customControl611->Unbind(myEVT_SimpleButtonClicked, &Container_MainImpl::OnClickREButton, this);
+    m_customControl612->Unbind(myEVT_SimpleButtonClicked, &Container_MainImpl::OnClickBootWimButton, this);
     Destroy();
 }
 
@@ -175,10 +181,22 @@ void Container_MainImpl::OnClickISOButton( wxCommandEvent& event )
         return;
 
     frame_impl->Holder()->ExtractMethod = EXTRACT_BOOT_WIM_FROM_ISO;
-    frame_impl->Holder()->FilePath.IsoFilePath = openFileDialog.GetPath();
+    frame_impl->Holder()->FilePath.FilePath = openFileDialog.GetPath();
     Container_Util::SetNewframe(new Container_CheckISO(frame_impl));
 }
 
+void Container_MainImpl::OnClickBootWimButton( wxCommandEvent& event )
+{
+    wxFileDialog openFileDialog(nullptr, ttt("OpenWIMFile"), "", "",
+                                "boot file|boot.wim;winpe.wim|WIM files|*.wim|All|*", 
+                                wxFD_OPEN|wxFD_FILE_MUST_EXIST);
+    if (openFileDialog.ShowModal() == wxID_CANCEL)
+        return;
+    frame_impl->Holder()->ExtractMethod = USE_EXISTING_FILE;
+    frame_impl->Holder()->FilePath.FilePath = openFileDialog.GetPath();
+    Container_Util::SetNewframe(new Container_CheckISO(frame_impl));
+    return;
+}
 void Container_MainImpl::OnLeftDown( wxMouseEvent& event )
 {
     m_choice1->Show(true);

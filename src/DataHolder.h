@@ -33,10 +33,10 @@ struct ISO_DATA
 
 struct FILE_PATH
 {
-    wxString IsoFilePath;
+    wxString FilePath;
     FILE_PATH()
     {
-        IsoFilePath = wxEmptyString;
+        FilePath = wxEmptyString;
     }
 };
 
@@ -44,6 +44,7 @@ enum EXTRACT_BOOT_WIM_METHOD
 {
     EXTRACT_BOOT_WIM_FROM_ISO,
     EXTRACT_BOOT_WIM_FROM_RE,
+    USE_EXISTING_FILE,
 };
 
 struct DataHolder

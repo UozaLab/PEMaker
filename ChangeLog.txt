@@ -1,3 +1,7 @@
+0.0.5 (2026.10.22)
+    support for executing dism commands. see pe_settings.ini
+    support for creating an iso file from boot.wim
+
 0.0.4 (2026.06.02)
     support for creating a winpeshl.ini file depending on the CPU architecture (32bit/64bit)
     fixed wrong name search for [Add] section in pe_settings.ini

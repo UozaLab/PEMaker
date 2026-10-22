@@ -22,6 +22,7 @@
 #include "tstring.h"
 #include "FileSystem/DiskInfo.h"
 #include <wx/stdpaths.h>
+#include <wx/filefn.h>
 #include <vector>
 #include <map>
 
@@ -209,7 +210,18 @@ FIRST_STEP:
         goto THIRD_STEP;
     }
 
-    iso = ISO::CreateExtractor(this, data->FilePath.IsoFilePath);
+    if(data->ExtractMethod == USE_EXISTING_FILE)
+    {
+        wxQueueEvent(event_handler, new MsgEvent("Copying files"));
+        if(!wxCopyFile(data->FilePath.FilePath, bootwim_path.GetFullPath(), true))
+        {
+            wxQueueEvent(event_handler, new ErrorEvent("Failed to copy a wim file"));
+            goto END;
+        }
+        goto THIRD_STEP;
+    }
+
+    iso = ISO::CreateExtractor(this, data->FilePath.FilePath);
     if(iso == nullptr)
     {
         wxQueueEvent(event_handler, new ErrorEvent("Failed to open iso file"));
@@ -223,25 +235,26 @@ FIRST_STEP:
 SECOND_STEP:
     {
     wxString boot_wim_internal_path("/sources/boot.wim");
-    const CSimpleIni::TKeyVal* key_value_pair = ini.GetSection(_T("ExtractBootWIM"));
-    if(key_value_pair)
-    {
-        for(CSimpleIni::TKeyVal::const_iterator itr = key_value_pair->begin(),
-            itr_end = key_value_pair->end(); itr != itr_end; itr++)
-        {
-            wxString line(itr->second);
-            line.Trim();
-            line.Trim(false);
-            boot_wim_internal_path = line;
+    const TCHAR* section = _T("ExtractBootWIM");
+    CSimpleIni::TNamesDepend keys;
+    ini.GetAllKeys(section, keys);
+    keys.sort(CSimpleIni::Entry::LoadOrder());
 
-            if(!iso->FileExists(boot_wim_internal_path))
-            {
-                wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Cannot find %s", boot_wim_internal_path)));
-                continue;
-            }
-            
-            break;
+    for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
+        itr != itr_end; itr++)
+    {
+        wxString line(ini.GetValue(section, itr->pItem));
+        line.Trim();
+        line.Trim(false);
+        boot_wim_internal_path = line;
+
+        if(!iso->FileExists(boot_wim_internal_path))
+        {
+            wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Cannot find %s", boot_wim_internal_path)));
+            continue;
         }
+        
+        break;
     }
 
     wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Trying to extract %s", boot_wim_internal_path)));
@@ -295,41 +308,42 @@ THIRD_STEP:
 
 FOURTH_STEP:
     {
-    const CSimpleIni::TKeyVal* key_value_pair = ini.GetSection(_T("ExtractFileFromBootWIM"));
-    if(key_value_pair)
+    CSimpleIni::TNamesDepend keys;
+    const TCHAR* section = _T("ExtractFileFromBootWIM");
+    ini.GetAllKeys(section, keys);
+    keys.sort(CSimpleIni::Entry::LoadOrder());
+
+    for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
+        itr != itr_end; itr++)
     {
-        for(CSimpleIni::TKeyVal::const_iterator itr = key_value_pair->begin(),
-            itr_end = key_value_pair->end(); itr != itr_end; itr++)
+        wxString key(itr->pItem);
+        wxString line(ini.GetValue(section, itr->pItem));
+        int c_index = line.Find(',');
+        if(c_index == -1) continue;
+        wxString from(line.SubString(0, c_index-1));
+        wxString to(line.SubString(c_index+1, line.Length()-1));
+        from.Trim();
+        from.Trim(false);
+        to.Trim();
+        to.Trim(false);
+        EnvironmentVariables::ReplaceEnvVars(&from);
+        EnvironmentVariables::ReplaceEnvVars(&to);
+
+        WIMExtractSubCommands sub_cmd = WIMExtractSubCommands::NORMAL;
+        if(key.Upper().StartsWith("FILENOTEXIST"))
         {
-            wxString key(itr->first.pItem);
-            wxString line(itr->second);
-            int c_index = line.Find(',');
-            if(c_index == -1) continue;
-            wxString from(line.SubString(0, c_index-1));
-            wxString to(line.SubString(c_index+1, line.Length()-1));
-            from.Trim();
-            from.Trim(false);
-            to.Trim();
-            to.Trim(false);
-            EnvironmentVariables::ReplaceEnvVars(&from);
-            EnvironmentVariables::ReplaceEnvVars(&to);
-
-            WIMExtractSubCommands sub_cmd = WIMExtractSubCommands::NORMAL;
-            if(key.Upper().StartsWith("FILENOTEXIST"))
-            {
-                sub_cmd = WIMExtractSubCommands::DROPFILENAME;
-                if(wxFileExists(to))
-                  continue;
-            }
+            sub_cmd = WIMExtractSubCommands::DROPFILENAME;
+            if(wxFileExists(to))
+              continue;
+        }
             
-            if(key.Upper().StartsWith("RENAME"))
-              sub_cmd = WIMExtractSubCommands::RENAME;
+        if(key.Upper().StartsWith("RENAME"))
+          sub_cmd = WIMExtractSubCommands::RENAME;
 
-            WIMJobStatus result = wim.Extract(export_target_path.GetFullPath(), 1, from, to, sub_cmd);
-            if(result != WIMJobStatus::SUCCESS)
-            {
-                wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to extract files(%d)", result)));
-            }
+        WIMJobStatus result = wim.Extract(export_target_path.GetFullPath(), 1, from, to, sub_cmd);
+        if(result != WIMJobStatus::SUCCESS)
+        {
+            wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Failed to extract files(%d)", result)));
         }
     }
     
@@ -379,11 +393,25 @@ SIXTH_STEP:
     str_sys << " : ";
     wxQueueEvent(event_handler, new MsgEvent(str_sys, true, false));
     str_sys = wxEmptyString;
+    bool damaged = false;
     if(file_exist_map[_T("etfsboot.com")])
-       str_sys << "[MBR(BIOS)] ";
+    {
+        str_sys << "[MBR(BIOS)] ";
+        damaged = true;
+    }
     if(file_exist_map[_T("efisys.bin")])
-       str_sys << "[GPT(UEFI)] ";
+    {
+        str_sys << "[GPT(UEFI)] ";
+        damaged = true;
+    }
     wxQueueEvent(event_handler, new MsgEvent(str_sys, wxColor(0, 0, 255), false, true));
+    if(!damaged && data->ExtractMethod == USE_EXISTING_FILE)
+    {
+        wxFileName tmp_path = WorkDir::GetWorkDir();
+        tmp_path.AppendDir("media");
+        wxQueueEvent(event_handler, new MsgEvent(wxString::Format("Cannot find files required for startup. You need to manually copy files to %s",
+                                                                  tmp_path.GetPath(wxPATH_GET_VOLUME | wxPATH_GET_SEPARATOR)), wxColor(0, 0, 255)));
+    }
 
     wxQueueEvent(event_handler, new MsgEvent(wxEmptyString));
     wxQueueEvent(event_handler, new MsgEvent(ttt("ClickNextToProceed")));

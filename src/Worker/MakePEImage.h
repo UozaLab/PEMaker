@@ -25,6 +25,7 @@
 class MakePEImage : public CustomThread {
   private:
     DataHolder* data;
+    wxString execute_cmd(const wxString& cmd);
 
   public:
     MakePEImage(wxEvtHandler *event_handler, DataHolder* _data);

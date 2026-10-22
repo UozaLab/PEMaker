@@ -207,6 +207,12 @@ bool WorkDir::PrepareWorkDir()
         return false;
     }
 
+    tmp_path.AppendDir(_T("mount"));
+    if(!tmp_path.Mkdir())
+    {
+        return false;
+    }
+
     return true;
 }
 
@@ -275,6 +281,22 @@ EnvironmentVariables::EnvironmentVariables()
     if(cd[cd.Length()-1] == '\\')
       cd = cd.SubString(0, cd.Length()-2);
     env_map[_T("CURRENTDIR")] = cd;
+
+    wxFileName ini_path = wxStandardPaths::Get().GetExecutablePath();
+    ini_path.SetFullName("pe_settings.ini");
+    CSimpleIniW ini;
+    ini.SetUnicode();
+    ini.SetQuotes();
+    ini.SetMultiLine();
+    ini.LoadFile(ini_path.GetFullPath().wc_str());
+
+    const CSimpleIni::TKeyVal* key_value_pair = ini.GetSection(_T("SetVars"));
+    for(CSimpleIni::TKeyVal::const_iterator itr = key_value_pair->begin(), itr_end = key_value_pair->end();
+        itr != itr_end; itr++)
+    {
+        env_map[itr->first.pItem] = wxString(itr->second);
+    }
+    
     regex.Compile(_T("%.+?%"));
 }
 
