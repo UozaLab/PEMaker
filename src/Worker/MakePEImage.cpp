@@ -143,14 +143,7 @@ void* MakePEImage::Entry()
     SetStateStart();
     ISOExtractor* iso = nullptr;
     WIM wim(this);
-
-    wxFileName ini_path = wxStandardPaths::Get().GetExecutablePath();
-    ini_path.SetFullName("pe_settings.ini");
-    CSimpleIniW ini;
-    ini.SetUnicode();
-    ini.SetQuotes();
-    ini.SetMultiLine();
-    ini.LoadFile(ini_path.GetFullPath().wc_str());
+    shared_ptr<CSimpleIniW> ini = SettingFile::createSettingFile();
 
     wxFileName export_target_path = WorkDir::GetWorkDir();
     export_target_path.AppendDir("media");
@@ -170,7 +163,7 @@ PREP_STEP:
     }
 
     {
-    const TCHAR* winpeshl_ini_value = ini.GetValue(data->ISOData.Arch32bit ? _T("winpeshl.ini_x86") : _T("winpeshl.ini_x64"), _T("key"));
+    const TCHAR* winpeshl_ini_value = ini->GetValue(data->ISOData.Arch32bit ? _T("winpeshl.ini_x86") : _T("winpeshl.ini_x64"), _T("key"));
     if(winpeshl_ini_value != nullptr)
     {
         wxFileName tmp_path = WorkDir::GetWorkDir();
@@ -217,14 +210,14 @@ SECOND_STEP:
 
     const TCHAR* section = data->ISOData.Mbr ? _T("ExtractFileFromBootWIM_BIOS") : _T("ExtractFileFromBootWIM_UEFI");
     CSimpleIni::TNamesDepend keys;
-    ini.GetAllKeys(section, keys);
+    ini->GetAllKeys(section, keys);
     keys.sort(CSimpleIni::Entry::LoadOrder());
 
     for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
         itr != itr_end; itr++)
     {
         wxString key(itr->pItem);
-        wxString line(ini.GetValue(section, itr->pItem));
+        wxString line(ini->GetValue(section, itr->pItem));
         int c_index = line.Find(',');
         if(c_index == -1) continue;
         wxString from(line.SubString(0, c_index-1));
@@ -305,13 +298,13 @@ FOURTH_STEP:
 
     const TCHAR* section = _T("ExtractFolderFromISO");
     CSimpleIni::TNamesDepend keys;
-    ini.GetAllKeys(section, keys);
+    ini->GetAllKeys(section, keys);
     keys.sort(CSimpleIni::Entry::LoadOrder());
 
     for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
         itr != itr_end; itr++)
     {
-        wxString line(ini.GetValue(section, itr->pItem));
+        wxString line(ini->GetValue(section, itr->pItem));
         int c_index = line.Find(',');
         if(c_index == -1) continue;
         wxString from(line.SubString(0, c_index-1));
@@ -331,13 +324,13 @@ FOURTH_STEP:
 
     const TCHAR* section2 = _T("ExtractFileFromISO");
     CSimpleIni::TNamesDepend keys2;
-    ini.GetAllKeys(section2, keys2);
+    ini->GetAllKeys(section2, keys2);
     keys2.sort(CSimpleIni::Entry::LoadOrder());
 
     for(CSimpleIni::TNamesDepend::const_iterator itr = keys2.begin(), itr_end = keys2.end();
         itr != itr_end; itr++)
     {
-        wxString line(ini.GetValue(section2, itr->pItem));
+        wxString line(ini->GetValue(section2, itr->pItem));
         int c_index = line.Find(',');
         if(c_index == -1) continue;
         wxString from(line.SubString(0, c_index-1));
@@ -365,26 +358,26 @@ FIFTH_STEP:
 
     const TCHAR* section = _T("Delete");
     CSimpleIni::TNamesDepend keys;
-    ini.GetAllKeys(section, keys);
+    ini->GetAllKeys(section, keys);
     keys.sort(CSimpleIni::Entry::LoadOrder());
 
     for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
         itr != itr_end; itr++)
     {
-        wxString file_to_delete(ini.GetValue(section, itr->pItem));
+        wxString file_to_delete(ini->GetValue(section, itr->pItem));
         cmds.AppendDelete(file_to_delete, false);
     }
 
     // Add
     const TCHAR* section2 = data->ISOData.Arch32bit ? _T("Add_x86") : _T("Add_x64");
     CSimpleIni::TNamesDepend keys2;
-    ini.GetAllKeys(section2, keys2);
+    ini->GetAllKeys(section2, keys2);
     keys2.sort(CSimpleIni::Entry::LoadOrder());
 
     for(CSimpleIni::TNamesDepend::const_iterator itr = keys2.begin(), itr_end = keys2.end();
         itr != itr_end; itr++)
     {
-        wxString line_to_add(ini.GetValue(section2, itr->pItem));
+        wxString line_to_add(ini->GetValue(section2, itr->pItem));
         int c_index = line_to_add.Find(',');
         if(c_index == -1) continue;
         wxString add_from(line_to_add.SubString(0, c_index-1));
@@ -419,13 +412,13 @@ SIXTH_STEP:
     // CopyFiles
     const TCHAR* section = _T("CopyFile");
     CSimpleIni::TNamesDepend keys;
-    ini.GetAllKeys(section, keys);
+    ini->GetAllKeys(section, keys);
     keys.sort(CSimpleIni::Entry::LoadOrder());
 
     for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
         itr != itr_end; itr++)
     {
-        wxString line_to_copy(ini.GetValue(section, itr->pItem));
+        wxString line_to_copy(ini->GetValue(section, itr->pItem));
         int c_index = line_to_copy.Find(',');
         if(c_index == -1) continue;
         wxString copy_from(line_to_copy.SubString(0, c_index-1));
@@ -453,7 +446,7 @@ SEVENTH_STEP:
     {
     if(TerminateRequired()) goto END;
     bool dism_enabled = false;
-    wxString value(ini.GetValue(_T("Options"), _T("ExecuteDISM")));
+    wxString value(ini->GetValue(_T("Options"), _T("ExecuteDISM")));
     if(value.Upper() == _T("1") || value.Upper() == _T("TRUE"))
     {
         wxQueueEvent(event_handler, new MsgEvent("DISM commands execution enabled"));
@@ -464,13 +457,13 @@ SEVENTH_STEP:
     {
         const TCHAR* section = _T("DISMCmds");
         CSimpleIni::TNamesDepend keys;
-        ini.GetAllKeys(section, keys);
+        ini->GetAllKeys(section, keys);
         keys.sort(CSimpleIni::Entry::LoadOrder());
         for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
             itr != itr_end; itr++)
         {
             if(TerminateRequired()) break;
-            wxString line_to_execute(ini.GetValue(section, itr->pItem));
+            wxString line_to_execute(ini->GetValue(section, itr->pItem));
             line_to_execute.Trim();
             line_to_execute.Trim(false);
             EnvironmentVariables::ReplaceEnvVars(&line_to_execute);

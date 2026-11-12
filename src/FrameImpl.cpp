@@ -129,7 +129,12 @@ Container_MainImpl::Container_MainImpl(FrameImpl* frame_impl)
     }
     if(num_files == 0)
     {
-        m_choice1->Enable(false);
+        std::map<wxString, int>* id_map = MultiLanguage::Instance()->GetLangMap();
+        for(std::map<wxString, int>::iterator itr = id_map->begin(), itr_end = id_map->end();
+            itr != itr_end; itr++)
+        {
+            m_choice1->Append(itr->first);
+        }
     }
     m_bitmap1->SetSize(16, 16);
     Utility::SetIcon(m_bitmap1, IDB_PNG13);

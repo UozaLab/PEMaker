@@ -16,8 +16,6 @@
  */
 
 #include "MiscWx.h"
-#include "resource.h"
-#include "resource_lang.h"
 #include "tstring.h"
 #include <wx/stdpaths.h>
 
@@ -79,6 +77,44 @@ wxString Utility::GetVersion()
     return wxString::Format("%d.%d.%d", v1, v2, v3);
 }
 
+char* read_from_resource(int id, DWORD* len)
+{
+    HMODULE handle = ::GetModuleHandle(NULL);
+    HRSRC rc = ::FindResource(handle, MAKEINTRESOURCE(id), _T("TEXT"));
+    HGLOBAL rcData = ::LoadResource(handle, rc);
+    DWORD size = ::SizeofResource(handle, rc);
+
+    char* buffer = new char[size+1];
+    ::memcpy(buffer, rcData, size);
+    buffer[size] = 0;
+
+    *len = size;
+    return buffer;
+}
+
+shared_ptr<CSimpleIniW> SettingFile::createSettingFile()
+{
+    CSimpleIniW* ini = new CSimpleIniW();
+    ini->SetUnicode();
+    ini->SetQuotes();
+    ini->SetMultiLine();
+
+    wxFileName file = wxFileName(wxStandardPaths::Get().GetExecutablePath());
+    file.SetFullName("pe_settings.ini");
+    if(file.FileExists())
+    {
+        ini->LoadFile(file.GetFullPath().wc_str());
+        return shared_ptr<CSimpleIniW>(ini);
+    }
+
+    DWORD size;
+    char* buffer = read_from_resource(IDR_TEXT1, &size);
+    ini->LoadData(buffer, size);
+    delete[] buffer;
+
+    return shared_ptr<CSimpleIniW>(ini);
+}
+
 MultiLanguage* MultiLanguage::_instance = NULL;
 
 MultiLanguage* MultiLanguage::Instance()
@@ -111,20 +147,15 @@ MultiLanguage::MultiLanguage()
 
 wxString MultiLanguage::GetString(wxString category, wxString name)
 {
+    std::map<wxString, int>* id_map = GetLangMap();
+
     if(!resource_loaded)
     {
-        HMODULE handle = ::GetModuleHandle(NULL);
-        HRSRC rc = ::FindResource(handle, MAKEINTRESOURCE(IDR_TEXT1), _T("TEXT"));
-        HGLOBAL rcData = ::LoadResource(handle, rc);
-        DWORD size = ::SizeofResource(handle, rc);
-
-        char* buffer = new char[size+1];
-        ::memcpy(buffer, rcData, size);
-        buffer[size] = 0;
-
+        DWORD size;
+        char* buffer = read_from_resource(IDR_LANG_EN_US, &size);
         ini_res.LoadData(buffer, size);
-        
         delete[] buffer;
+
         resource_loaded = true;
     }
     if(damaged)
@@ -138,6 +169,16 @@ wxString MultiLanguage::GetString(wxString category, wxString name)
         file.SetName(locale);
         file.SetExt("txt");
         ini.Reset();
+        if(!file.FileExists())
+        {
+            if(id_map->count(locale) > 0)
+            {
+                DWORD size;
+                char* buffer = read_from_resource((*id_map)[locale], &size);
+                ini.LoadData(buffer, size);
+                delete[] buffer;
+            }
+        }
         ini.LoadFile(file.GetFullPath().wc_str());
 
         damaged = false;
@@ -282,15 +323,9 @@ EnvironmentVariables::EnvironmentVariables()
       cd = cd.SubString(0, cd.Length()-2);
     env_map[_T("CURRENTDIR")] = cd;
 
-    wxFileName ini_path = wxStandardPaths::Get().GetExecutablePath();
-    ini_path.SetFullName("pe_settings.ini");
-    CSimpleIniW ini;
-    ini.SetUnicode();
-    ini.SetQuotes();
-    ini.SetMultiLine();
-    ini.LoadFile(ini_path.GetFullPath().wc_str());
+    shared_ptr<CSimpleIniW> ini = SettingFile::createSettingFile();
 
-    const CSimpleIni::TKeyVal* key_value_pair = ini.GetSection(_T("SetVars"));
+    const CSimpleIni::TKeyVal* key_value_pair = ini->GetSection(_T("SetVars"));
     for(CSimpleIni::TKeyVal::const_iterator itr = key_value_pair->begin(), itr_end = key_value_pair->end();
         itr != itr_end; itr++)
     {

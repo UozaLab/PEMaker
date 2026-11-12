@@ -58,7 +58,6 @@ class FrameImpl : public BaseFrame
   public:
     FrameImpl();
     DataHolder* Holder() { return &dataholder; }
-    void OnClickButton( wxCommandEvent& event );
     void OnClose( wxCloseEvent& event );
 };
 

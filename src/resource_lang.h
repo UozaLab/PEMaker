@@ -3,6 +3,8 @@
 // Used by file.rc
 //
 #define IDR_TEXT1                       102
+#define IDR_LANG_EN_US                  200
+#define IDR_LANG_JA_JP                  201
 
 // Next default values for new objects
 // 

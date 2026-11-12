@@ -164,14 +164,7 @@ void* CheckISOImage::Entry()
     std::vector<wxString> wim_image_names;
     std::map<tstring, bool> file_exist_map;
     WIM wim(this);
-
-    wxFileName ini_path = wxStandardPaths::Get().GetExecutablePath();
-    ini_path.SetFullName("pe_settings.ini");
-    CSimpleIniW ini;
-    ini.SetUnicode();
-    ini.SetQuotes();
-    ini.SetMultiLine();
-    ini.LoadFile(ini_path.GetFullPath().wc_str());
+    shared_ptr<CSimpleIniW> ini = SettingFile::createSettingFile();
 
 PREP_STEP:
     if(!WorkDir::RemoveWorkDir())
@@ -237,13 +230,13 @@ SECOND_STEP:
     wxString boot_wim_internal_path("/sources/boot.wim");
     const TCHAR* section = _T("ExtractBootWIM");
     CSimpleIni::TNamesDepend keys;
-    ini.GetAllKeys(section, keys);
+    ini->GetAllKeys(section, keys);
     keys.sort(CSimpleIni::Entry::LoadOrder());
 
     for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
         itr != itr_end; itr++)
     {
-        wxString line(ini.GetValue(section, itr->pItem));
+        wxString line(ini->GetValue(section, itr->pItem));
         line.Trim();
         line.Trim(false);
         boot_wim_internal_path = line;
@@ -310,14 +303,14 @@ FOURTH_STEP:
     {
     CSimpleIni::TNamesDepend keys;
     const TCHAR* section = _T("ExtractFileFromBootWIM");
-    ini.GetAllKeys(section, keys);
+    ini->GetAllKeys(section, keys);
     keys.sort(CSimpleIni::Entry::LoadOrder());
 
     for(CSimpleIni::TNamesDepend::const_iterator itr = keys.begin(), itr_end = keys.end();
         itr != itr_end; itr++)
     {
         wxString key(itr->pItem);
-        wxString line(ini.GetValue(section, itr->pItem));
+        wxString line(ini->GetValue(section, itr->pItem));
         int c_index = line.Find(',');
         if(c_index == -1) continue;
         wxString from(line.SubString(0, c_index-1));

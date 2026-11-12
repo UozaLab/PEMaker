@@ -1,3 +1,7 @@
+1.0.0 (2026.11.12)
+    Administrator privileges are required to run
+    Make it possible to run without pe_settings.ini and lang folder
+
 0.0.5 (2026.10.22)
     support for executing dism commands. see pe_settings.ini
     support for creating an iso file from boot.wim

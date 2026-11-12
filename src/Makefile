@@ -25,7 +25,7 @@ SRCS = App.cpp BaseFrame.cpp FrameImpl.cpp MiscWx.cpp tstring.cpp RegistryHive.c
        Worker/Events.cpp Worker/MakePEImage.cpp Worker/ISO.cpp Worker/WIM.cpp Worker/MakeISO.cpp\
        Worker/CheckISOImage.cpp \
        FileSystem/DiskInfo.cpp
-RESOURCES = file.rc icon.rc version.rc
+RESOURCES = file.rc icon.rc version.rc manifest.rc
 
 OBJS = $(SRCS:.cpp=.o)
 RESOURCE_OBJS = $(RESOURCES:.rc=.o)
